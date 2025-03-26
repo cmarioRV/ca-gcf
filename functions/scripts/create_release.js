@@ -8,7 +8,7 @@ const message = (text) => {
 };
 
 const getLatestTag = () => {
-  return execSync("git describe --tags '$(git rev-list --tags --max-count=1)'")
+  return execSync("git describe --tags $(git rev-list --tags --max-count=1)")
       .toString().trim();
 };
 
