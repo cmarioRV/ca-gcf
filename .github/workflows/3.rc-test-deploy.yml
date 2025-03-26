@@ -40,7 +40,7 @@ jobs:
   rc-deploy:
     needs: [ rc-test ]
     runs-on: ubuntu-latest
-    environment: staging
+    environment: stg
     permissions: # Necessary for workload identity provider
       contents: 'read'
       id-token: 'write'
