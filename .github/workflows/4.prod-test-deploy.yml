@@ -1,0 +1,138 @@
+name: "run tests & deploy to prod"
+
+on:
+  pull_request:
+    types: [ closed ]
+    branches: [ main ]
+
+concurrency:
+  group: ci-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  
+  prod-test:
+    runs-on: ubuntu-latest
+    if: (contains(toJSON(github.head_ref), 'release/') || contains(toJSON(github.head_ref), 'hotfix/')) && github.event.pull_request.merged == true
+    steps:
+      - name: Checkout Repo
+        uses: 'actions/checkout@v4'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installing dependencies
+        run: |
+          npm install
+          npm install -g firebase-tools
+          cd functions && npm install
+
+      - name: Run Lint Codebase
+        run: cd functions && npm run lint
+
+      - name: Run Unit Tests
+        run: cd functions && npm run test
+  
+  prod-deploy:
+    needs: [ prod-test ]
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions: # Necessary for workload identity provider
+      contents: 'read'
+      id-token: 'write'
+    
+    outputs:
+      RELEASE_VERSION: ${{ steps.variables.outputs.RELEASE_VERSION }}
+    steps:
+      - name: Checkout Repo
+        uses: 'actions/checkout@v4'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installing dependencies
+        run: |
+          npm install
+          npm install -g firebase-tools
+          cd functions && npm install
+
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: '${{ secrets.PROJECT_ID }}'
+          token_format: access_token
+          workload_identity_provider: '${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}'
+          service_account: '${{ secrets.SERVICE_ACCOUNT }}'
+      
+      - name: Deploy to Google Cloud Functions
+        run: firebase deploy --only functions --project ${{ secrets.PROJECT_ID }}
+      
+      # 7. Notify if fails
+      #      - name: Notify slack fail
+      #        if: failure()
+      #        env:
+      #          SLACK_BOT_TOKEN: ${{ secrets.SLACK_NOTIFICATIONS_BOT_TOKEN }}
+      #        uses: voxmedia/github-action-slack-notify-build@v1
+      #        with:
+      #          channel: app-alerts
+      #          status: FAILED
+      #          color: danger
+  
+  prod-create-release:
+    needs: [ prod-deploy ]
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Setup
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+      
+      # 2. Create release
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          RELEASE_VERSION=${{ needs.prod-deploy.outputs.RELEASE_VERSION }}
+          git tag -a $RELEASE_VERSION -m "release: $RELEASE_VERSION"
+          git push origin $RELEASE_VERSION
+          gh release create $RELEASE_VERSION --title "$RELEASE_VERSION" --generate-notes
+  
+  prod-create-pull-request:
+    needs: [ prod-deploy ]
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Setup
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      
+      # 2. Create PR
+      - name: Open PR to align dev with main
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          RELEASE_VERSION=${{ needs.prod-deploy.outputs.RELEASE_VERSION }}
+          BRANCH_NAME="merge/$RELEASE_VERSION"
+          git checkout -b $BRANCH_NAME
+          
+          git merge origin/main
+          git commit --allow-empty -am "Merge main into dev"
+          git push origin "$BRANCH_NAME"
+          
+          gh pr create --base dev --head "$BRANCH_NAME" --title "Merge - $RELEASE_VERSION" --fill
