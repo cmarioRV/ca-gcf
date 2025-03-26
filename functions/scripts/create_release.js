@@ -51,8 +51,8 @@ const confirmAction = (question) => {
 
     // Comprobar rama actual
     const currentBranch = execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
-    if (currentBranch !== 'develop') {
-      console.error('ERROR: Debes estar en la rama develop');
+    if (currentBranch !== 'dev') {
+      console.error('ERROR: Debes estar en la rama dev');
       process.exit(1);
     }
 
@@ -63,8 +63,8 @@ const confirmAction = (question) => {
       process.exit(1);
     }
 
-    message('>>> Pulling develop');
-    runCommand('git pull origin develop');
+    message('>>> Pulling dev');
+    runCommand('git pull origin dev');
 
     message('>>> Pulling tags');
     runCommand('git fetch --prune --prune-tags origin');
@@ -83,9 +83,9 @@ const confirmAction = (question) => {
 
     const branchName = `release/${releaseVersion}`;
 
-    message(`>>>>> Creating branch '${branchName}' from develop...`);
+    message(`>>>>> Creating branch '${branchName}' from dev...`);
 
-    runCommand(`git checkout -b ${branchName} develop`);
+    runCommand(`git checkout -b ${branchName} dev`);
     runCommand(`git push origin ${branchName}`);
     runCommand(`gh pr create --base main --head ${branchName} --title "Release - ${releaseVersion}" --fill`);
 
