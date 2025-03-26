@@ -1,0 +1,34 @@
+name: "run tests"
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    branches: [ dev ]
+
+concurrency:
+  group: ci-dev-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dev-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: 'actions/checkout@v4'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installing dependencies
+        run: |
+          npm install
+          npm install -g firebase-tools
+          cd functions && npm install
+
+      - name: Run Lint Codebase
+        run: cd functions && npm run lint
+
+      - name: Run Unit Tests
+        run: cd functions && npm run test
