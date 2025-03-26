@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "carta-dev-8838f",
+    "staging": "carta-stg-ab18e",
+    "production": "carta-prod-f76fa"
+  },
+  "targets": {},
+  "etags": {}
+}
